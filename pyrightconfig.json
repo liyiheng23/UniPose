@@ -1,0 +1,8 @@
+{
+    "exclude": [
+        "./data", 
+        "./work_dirs", 
+        "./processed_dataset", 
+        "./checkpoints", 
+    ]
+}
