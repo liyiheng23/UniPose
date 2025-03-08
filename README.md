@@ -51,56 +51,6 @@ This repository contains the official implementation of **UniPose**. UniPose is 
       * `LLaVA`: [liuhaotian/llava-v1.6-mistral-7b](https://huggingface.co/liuhaotian/llava-v1.6-mistral-7b)
       #### Ours provided Model:
 
-
-## 🎰 Train
-#### I - Prepare training data
-Similar to [SeeSR](https://github.com/cswry/SeeSR/blob/main/README.md#step2-prepare-training-data), We pre-prepare HQ-LQ image pairs for the training of IR model. Run the following command to make paired data for training:
-
-```shell
-python3 tools/make_paired_data.py \
---gt_path gt_path1 gt_path2 ... \ 
---save_dir /path/to/save/folder/ \
---epoch 1 # number of epochs to generate paired data
-```
-
-After generating paired data, you can use MLLM (e.g., [LLaVA](https://github.com/haotian-liu/LLaVA)) to generate detailed text prompt for HQ images. Then you need to use T5 to extract text features in order to save training time. Run:
-
-```shell
-python3 tools/extract_t5_features.py \
---t5_ckpt /path/to/t5-v1_1-xxl \
---caption_folder /path/to/caption/folder \
---save_npz_folder /path/to/save/npz/folder
-```
-
-Finally, the directory structure for training datasets should look like
-```
-training_datasets_folder/
-    └── gt
-        └── 0000001.png # GT , (1024, 1024, 3)
-        └── ...
-    └── sr_bicubic
-        └── 0000001.png # LQ + bicubic upsample, (1024, 1024, 3)
-        └── ...
-    └── caption
-        └── 0000001.txt # Caption files (not used in training)
-        └── ...
-    └── npz
-        └── 0000001.npz # T5 features
-        └── ...
-```
-#### II - Training for DreamClear
-Run the following command to train DreamClear with default settings:
-```shell
-python3 -m torch.distributed.launch --nproc_per_node=8 --nnodes=... --node_rank=... --master_addr=... --master_port=... \
-    train_dreamclear.py configs/DreamClear/DreamClear_Train.py \
-    --load_from /path/to/PixArt-XL-2-1024-MS.pth \
-    --vae_pretrained /path/to/sd-vae-ft-ema \
-    --swinir_pretrained /path/to/general_swinir_v1.ckpt \
-    --val_image /path/to/RealLQ250/lq/val_image.png \
-    --val_npz /path/to/RealLQ250/npz/val_image.npz \
-    --work_dir experiments/train_dreamclear
-```
-Please modify the path of training datasets in `configs/DreamClear/DreamClear_Train.py`. You can also modify the training hyper-parameters (e.g., `lr`, `train_batch_size`, `gradient_accumulation_steps`) in this file, according to your own GPU machines.
 ## ⚡ Inference
 We provide the `RealLQ250` benchmark, which can be downloaded from [Google Drive](https://drive.google.com/file/d/16uWuJOyGMw5fbXHGcl6GOmxYJb_Szrqe/view?usp=sharing).
 #### Testing DreamClear for Image Restoration
