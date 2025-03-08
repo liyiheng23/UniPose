@@ -1,17 +1,19 @@
-import sys
 import os
 import cv2
 import argparse
 import torch
 import torch.utils
-import numpy as np
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from peft import PeftModel
 from llava import conversation as conversation_lib
+from transformers import AutoTokenizer
+from llava.model.language_model.llava_mistral import LlavaMistralConfig
 
-from posegpt.utils.vis_for_tasks import render_smpl, get_smpl_pose_params
+from posegpt.models.posegpt_full_mask import PoseGPTFullMask
+from posegpt.utils.visualization import render_smpl, get_smpl_pose_params
 from posegpt.utils import Config
-from posegpt.datasets.posegpt import build_data_module
+
 
 device = 'cuda:1'
 
@@ -24,18 +26,16 @@ def load_pretrained_model(config, model_path, model_base, device_map='auto', tor
     # load model
     print('Loading LLaVA from base model...')
     lora_cfg_pretrained = LlavaMistralConfig.from_pretrained(model_path)
-    with warnings.catch_warnings():
-        warnings.filterwarnings('ignore')
-        model = PoseGPTFullMask.from_pretrained(
-            model_base, 
-            low_cpu_mem_usage=True, 
-            attn_implementation=None, 
-            torch_dtype=torch_dtype, 
-            config=lora_cfg_pretrained, 
-            tokenizer=tokenizer, 
-            device_map=device_map, 
-            pose_vqvae_codebook_size=config.pose_vqvae_config.params.quantizer.params.nb_code, 
-            evaluate_task=config.evaluate_task)
+    model = PoseGPTFullMask.from_pretrained(
+        model_base, 
+        low_cpu_mem_usage=True, 
+        attn_implementation=None, 
+        torch_dtype=torch_dtype, 
+        config=lora_cfg_pretrained, 
+        tokenizer=tokenizer, 
+        device_map=device_map, 
+        pose_vqvae_codebook_size=config.pose_vqvae_config.params.quantizer.params.nb_code, 
+        evaluate_task=config.evaluate_task)
 
     model.config.eos_token_id = tokenizer.eos_token_id
     model.config.bos_token_id = tokenizer.bos_token_id
@@ -57,7 +57,6 @@ def load_pretrained_model(config, model_path, model_base, device_map='auto', tor
     model.resize_token_embeddings(len(tokenizer)) # type: ignore
     model.load_state_dict(non_lora_trainables, strict=False)
     
-    from peft import PeftModel
     print('Loading LoRA weights...')
     model = PeftModel.from_pretrained(model, model_path)
     print('Merging LoRA weights...')
@@ -77,7 +76,6 @@ def load_pretrained_model(config, model_path, model_base, device_map='auto', tor
 
 
 def eval_model(args):
-    # disable_torch_init()
     config = Config.fromfile(args.config)
     torch_dtype = torch.bfloat16
     local_rank = int(os.environ.get("LOCAL_RANK", 0))
