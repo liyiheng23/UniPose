@@ -50,36 +50,6 @@ class PoseGPT(LlavaMistralForCausalLM):
     def get_hmr_vit_backbone(self):
         return self.model.hmr_vit_backbone
     
-    def forward(self, 
-                # original input, for inference
-                input_ids=None, attention_mask=None, position_ids=None, 
-                past_key_values=None, inputs_embeds=None, labels=None, 
-
-                # from dataset, for training
-                body_poseA_rotmat=None, body_poseB_rotmat=None, images=None, 
-                caption=None, tasks=None, **kwargs):
-        if self.training:
-            # pose tokenizer
-            poseA_tokens = self.model.pose_vqvae.encode(body_poseA_rotmat)
-            poseB_tokens = self.model.pose_vqvae.encode(body_poseB_rotmat)
-
-            input_ids, output_ids, attention_mask = process_templates( # type: ignore
-                caption, tasks, poseA_tokens, poseB_tokens, tokenizer=self.tokenizer, 
-                codebook_size=self.pose_vqvae_codebook_size) # type: ignore
-            
-            (input_ids, position_ids, attention_mask, past_key_values, inputs_embeds, 
-            labels) = self.prepare_inputs_labels_for_multimodal(
-                input_ids.to(self.device), position_ids=position_ids, attention_mask=attention_mask.to(self.device), 
-                past_key_values=past_key_values, labels=output_ids.to(self.device), images=images, tasks=tasks, 
-                hmr_images=kwargs.get('hmr_images', None))
-        return super().forward(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            past_key_values=past_key_values,
-            inputs_embeds=inputs_embeds,
-            labels=labels)
-    
     def evaluate(self, 
                 body_poseA_rotmat, 
                 body_poseB_rotmat, 
@@ -97,7 +67,7 @@ class PoseGPT(LlavaMistralForCausalLM):
         poseB_tokens = self.model.pose_vqvae.encode(body_poseB_rotmat)
         input_ids, attention_mask = process_templates(
             caption, tasks, poseA_tokens, poseB_tokens, tokenizer=self.tokenizer, 
-            training=False, codebook_size=self.pose_vqvae_codebook_size)
+            codebook_size=self.pose_vqvae_codebook_size)
         
         # generate
         self.config.tokenizer_padding_side = 'left'
@@ -438,7 +408,7 @@ class PoseGPTCLIP(PoseGPT):
 # ===============================================================
 
 def process_templates(captions, tasks, poseA_tokens, poseB_tokens, 
-                      tokenizer=None, training=True, codebook_size=2048):
+                      tokenizer=None, codebook_size=2048):
     poseA_strings = batch_pose_tokenids2string(poseA_tokens, codebook_size=codebook_size)
     poseB_strings = batch_pose_tokenids2string(poseB_tokens, codebook_size=codebook_size)
     
@@ -451,37 +421,19 @@ def process_templates(captions, tasks, poseA_tokens, poseB_tokens,
         input_prompt = process_template(tasks[i]['input'], captions[i], poseA_strings[i], poseB_strings[i])
         conv.append_message(conv.roles[0], input_prompt)
         inputs_len = len(tokenizer_image_token(conv.get_prompt(), tokenizer, return_tensors='pt'))
-        if training:
-            output_prompt = process_template(tasks[i]['output'], captions[i], poseA_strings[i], poseB_strings[i])
-            conv.append_message(conv.roles[1], output_prompt)
-            input_id = tokenizer_image_token(conv.get_prompt(), tokenizer, return_tensors='pt')
-            output_id = copy.deepcopy(input_id)
-            output_id[:inputs_len] = IGNORE_INDEX
-            output_ids.append(output_id)
-        else:
-            conv.append_message(conv.roles[1], None)
-            input_id = tokenizer_image_token(conv.get_prompt(), tokenizer, return_tensors='pt')
+        conv.append_message(conv.roles[1], None)
+        input_id = tokenizer_image_token(conv.get_prompt(), tokenizer, return_tensors='pt')
         input_ids.append(input_id)
 
-    if training:
-        input_ids = torch.nn.utils.rnn.pad_sequence(
-            input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
-        attention_mask = input_ids.ne(tokenizer.pad_token_id)
-        input_ids = input_ids[:, :tokenizer.model_max_length]
-        output_ids = torch.nn.utils.rnn.pad_sequence(
-            output_ids, batch_first=True, padding_value=IGNORE_INDEX)
-        output_ids = output_ids[:, :tokenizer.model_max_length]
-        return input_ids, output_ids, attention_mask
-    else:
-        # batch inference need left padding
-        reversed_seq = [seq.flip(0) for seq in input_ids]
-        padded_seq = torch.nn.utils.rnn.pad_sequence(
-            reversed_seq, batch_first=True, padding_value=tokenizer.pad_token_id)
-        padded_seq = padded_seq.flip(1)
+    # batch inference need left padding
+    reversed_seq = [seq.flip(0) for seq in input_ids]
+    padded_seq = torch.nn.utils.rnn.pad_sequence(
+        reversed_seq, batch_first=True, padding_value=tokenizer.pad_token_id)
+    padded_seq = padded_seq.flip(1)
 
-        attention_mask = padded_seq.ne(tokenizer.pad_token_id)
-        input_ids = padded_seq[:, -tokenizer.model_max_length:]
-        return input_ids, attention_mask
+    attention_mask = padded_seq.ne(tokenizer.pad_token_id)
+    input_ids = padded_seq[:, -tokenizer.model_max_length:]
+    return input_ids, attention_mask
 
 # process single template
 def process_template(template, caption, poseA_string, poseB_string):

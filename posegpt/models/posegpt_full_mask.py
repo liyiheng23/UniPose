@@ -172,21 +172,6 @@ class PoseGPTFullMask(PoseGPT):
         **kwargs
     ) -> Union[Tuple, CausalLMOutputWithPast]:
 
-        if self.training:
-            # pose tokenizer
-            poseA_tokens = self.model.pose_vqvae.encode(body_poseA_rotmat)
-            poseB_tokens = self.model.pose_vqvae.encode(body_poseB_rotmat)
-
-            input_ids, output_ids, attention_mask = process_templates( # type: ignore
-                caption, tasks, poseA_tokens, poseB_tokens, tokenizer=self.tokenizer, 
-                codebook_size=self.pose_vqvae_codebook_size) # type: ignore
-            
-            (input_ids, position_ids, attention_mask, past_key_values, inputs_embeds, 
-            labels) = self.prepare_inputs_labels_for_multimodal(
-                input_ids.to(self.device), position_ids=position_ids, attention_mask=attention_mask.to(self.device), 
-                past_key_values=past_key_values, labels=output_ids.to(self.device), images=images, tasks=tasks, 
-                hmr_images=kwargs.get('hmr_images', None))
-            
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -208,50 +193,9 @@ class PoseGPTFullMask(PoseGPT):
         hidden_states = outputs[0]
         logits = self.lm_head(hidden_states)
         logits = logits.float()
-        all_loss = None
 
-        if self.training:
-            loss_fct = CrossEntropyLoss(reduction='sum')
-            for i, label in enumerate(labels):
-                pose_begin_idx = torch.where(label == self.pose_begin_idx)[0]
-                pose_end_idx = torch.where(label == self.pose_end_idx)[0]
-                # causal mask + full mask: next token prediction + full pose pred
-                if pose_begin_idx.size(0) > 0:
-                    # prefix text loss
-                    shift_logits = logits[i, :pose_begin_idx].contiguous()
-                    shift_labels = labels[i, 1:pose_begin_idx + 1].contiguous().to(shift_logits.device)
-                    loss_prefix_texts = loss_fct(shift_logits, shift_labels)
-
-                    # pose loss
-                    loss_pose = loss_fct(logits[i][pose_begin_idx + 1:pose_end_idx], 
-                                         label[pose_begin_idx + 1:pose_end_idx]) 
-
-                    # posefix text loss
-                    shift_logits = logits[i, pose_end_idx:-1].contiguous()
-                    shift_labels = labels[i, pose_end_idx + 1:].contiguous().to(shift_logits.device)
-                    loss_posefix_texts = loss_fct(shift_logits, shift_labels)
-
-                    loss = loss_prefix_texts + loss_pose + loss_posefix_texts
-
-                # only causal mask, next token prediction
-                else:
-                    # Shift so that tokens < n predict n
-                    shift_logits = logits[i, :-1, :].contiguous()
-                    shift_labels = labels[i, 1:].contiguous()
-                    # Flatten the tokens
-                    shift_logits = shift_logits.view(-1, self.config.vocab_size)
-                    shift_labels = shift_labels.view(-1).to(shift_logits.device)
-                    # Enable model parallelism
-                    loss = loss_fct(shift_logits, shift_labels)
-                if all_loss is None: all_loss = loss
-                else: all_loss = all_loss + loss
-            all_loss = all_loss / (labels != -100).sum()
-            
-        if not return_dict:
-            raise NotImplementedError
-        
         return CausalLMOutputWithPast(
-            loss=all_loss,
+            loss=None,
             logits=logits,
             past_key_values=outputs.past_key_values,
             hidden_states=outputs.hidden_states,
@@ -266,7 +210,7 @@ class PoseGPTFullMask(PoseGPT):
         poseB_tokens = self.model.pose_vqvae.encode(body_poseB_rotmat)
         input_ids, attention_mask = process_templates(
             caption, tasks, poseA_tokens, poseB_tokens, tokenizer=self.tokenizer, 
-            training=False, codebook_size=self.pose_vqvae_codebook_size)
+            codebook_size=self.pose_vqvae_codebook_size)
         
         # generate
         self.config.tokenizer_padding_side = 'left'
@@ -278,6 +222,7 @@ class PoseGPTFullMask(PoseGPT):
             num_beams=1, use_cache=True, tasks=tasks, **kwargs)
         # convert output to float32 for metric calculation.
         # pose process
+        
         if self.evaluate_task in ['pose2text', 'image2text', 'image2text_reasoning']:
             pred_text = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
             return dict(
@@ -302,13 +247,6 @@ class PoseGPTFullMask(PoseGPT):
             return dict(
                 pred_axis_angles=pred_body_pose, 
                 keypoints_3d=keypoints_3d)
-        elif self.evaluate_task in ['image2pose_reasoning']:
-            pred_body_pose = self.decode_pose_from_outputs(
-                outputs, self.device, input_ids.dtype, return_pose_type='axis_angle')
-            gt_body_pose = matrix_to_axis_angle(body_poseA_rotmat)
-            return dict(
-                pred_axis_angles=pred_body_pose, 
-                gt_axis_angles=gt_body_pose)
         elif self.evaluate_task in ['pose_difference', 'image_difference']:
             pred_text = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
             gt_pose = torch.stack([body_poseA_rotmat.to(torch.float32), 
@@ -442,32 +380,7 @@ class PoseGPTFullMask(PoseGPT):
             position_ids = None
         
         attention_mask = attention_mask.to(torch.int8)
-        # TODO: add comment
-        if self.training:
-            for i, task in enumerate(tasks):
-                task_output = task['output']
-                if POSE_TOKEN in task_output or POSEB_TOKEN in task_output:
-                    pose_begin_idx = torch.where(new_labels[i] == self.pose_begin_idx)[0][-1]
-                    attention_mask[i][pose_begin_idx + 1:pose_begin_idx + 1 + 80] = 2 # set mask as 2 when need full mask
-                    new_input_embeds[i][pose_begin_idx + 1:pose_begin_idx + 1 + 80] = self.get_model().embed_tokens.weight[-80:, :]
 
-        # ========================
-        # if position_ids is not None or past_key_values is not None: import ipdb; ipdb.set_trace()
-        # assert len(input_ids) == 1
-        # begin_id = torch.where(input_ids[0] == self.pose_begin_idx)
-
-        # # random erase 15%
-        # mask = torch.ones_like(input_ids[0]).to(torch.bool)
-        # percentage = 0.0
-        # numbers = torch.arange(0, 80)
-        # random_indices = torch.randperm(len(numbers))
-        # random_samples = numbers[random_indices[:int(len(numbers) * percentage)]].to(mask.device)
-        # mask[random_samples + begin_id[0] + 1] = False
-        # input_ids = [input_ids[0][mask]]
-        # attention_mask = attention_mask[:, mask]
-        # new_input_embeds = new_input_embeds[:, mask]
-        # import ipdb; ipdb.set_trace()
-        # ========================
         return None, position_ids, attention_mask, past_key_values, new_input_embeds, new_labels
 
     @torch.no_grad()
@@ -551,9 +464,6 @@ class PoseGPTFullMask(PoseGPT):
             
             next_tokens_scores = logits_processor(input_ids, next_token_logits)
             next_tokens = torch.argmax(next_tokens_scores, dim=-1) 
-            # ! TODO: 仅支持单任务的batch inference，且对于pose生成任务，要求输出的size是一样的
-            # ! 若需要指令微调，则仅支持bs=1
-            # ! 不支持多任务+多batch
             # next pose prediction
             if torch.any(next_tokens == self.pose_begin_idx):
                 next_tokens[:] = self.pose_begin_idx
@@ -564,7 +474,6 @@ class PoseGPTFullMask(PoseGPT):
                 is_encoder_decoder=self.config.is_encoder_decoder, next_pose_prediction=next_pose_prediction)
             
             if next_pose_prediction:
-                # 把当前预测的token和接下来的pose token都放到next tokens
                 next_tokens = torch.concat([next_tokens, -torch.ones_like(next_tokens).repeat(1, 80)], dim=1)
             else:
                 # finished sentences should have their next token be a padding token
@@ -616,7 +525,6 @@ class PoseGPTFullMask(PoseGPT):
             attention_mask = model_kwargs["attention_mask"]
             attention_mask = torch.cat([attention_mask, attention_mask.new_ones((attention_mask.shape[0], 1))], dim=-1)
             if next_pose_prediction:
-                # mask == 2的部分表示需要full attn, 再append 2
                 attention_mask = torch.cat([attention_mask, 2*attention_mask.new_ones((attention_mask.shape[0], 80))], dim=-1)
             model_kwargs['attention_mask'] = attention_mask
         return model_kwargs
@@ -793,12 +701,4 @@ class PoseGPTFullMaskOnlyPoseVit(PoseGPTFullMask):
             position_ids = None
         
         attention_mask = attention_mask.to(torch.int8)
-        # TODO: add comment
-        if self.training:
-            for i, task in enumerate(tasks):
-                task_output = task['output']
-                if POSE_TOKEN in task_output or POSEB_TOKEN in task_output:
-                    pose_begin_idx = torch.where(new_labels[i] == self.pose_begin_idx)[0][-1]
-                    attention_mask[i][pose_begin_idx + 1:pose_begin_idx + 1 + 80] = 2 # set mask as 2 when need full mask
-                    new_input_embeds[i][pose_begin_idx + 1:pose_begin_idx + 1 + 80] = self.get_model().embed_tokens.weight[-80:, :]
         return None, position_ids, attention_mask, past_key_values, new_input_embeds, new_labels
