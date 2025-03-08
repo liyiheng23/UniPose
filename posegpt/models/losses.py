@@ -36,7 +36,6 @@ class GPTLoss(nn.Module):
         setattr(self, 'count', torch.tensor(0.0, device=device))
         setattr(self, 'loss', torch.tensor(0.0, device=device))
 
-
 class PoseVQLoss(nn.Module):
     def __init__(self, lambda_pose, lambda_joints, lambda_vertices, lambda_commit) -> None:
         super().__init__()
@@ -116,7 +115,6 @@ class PoseVQLoss(nn.Module):
 
         for loss in self.losses:
             setattr(self, loss, torch.tensor(0.0, device=device))
-
 
 class TextPoseMatchLoss(nn.Module):
     def __init__(self):

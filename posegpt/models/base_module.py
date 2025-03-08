@@ -9,7 +9,6 @@ def build_model(cfg):
     return instantiate_from_config(cfg)
 
 def build_modelmodule(cfg, logger=None):
-    # 手动传入logger用于保存log到本地
     if not "target" in cfg:
         raise KeyError("Expected key `target` to instantiate.")
     return get_obj_from_str(cfg["target"])(
@@ -33,11 +32,8 @@ class BaseModule(pl.LightningModule):
                  checkpoint_config=None, 
                  **kwargs) -> None:
         super().__init__()
-        # 如果只inference的话，不需要build loss, metric...
-        # log到本地
         if logger is not None:
             self.metric_writter = MetricLogUtil(logger)
-        # 保存ckp
         if checkpoint_config is not None:
             self.ckp_writter = CheckpointSaveUtil(logger, **checkpoint_config)
 
@@ -56,6 +52,7 @@ class BaseModule(pl.LightningModule):
     def configure_optimizers(self):
         if self.optimizer_config is None:
             return {}
+
         # Optimizer
         optim_target = self.optimizer_config.target
         if len(optim_target.split('.')) == 1:
@@ -99,15 +96,7 @@ class BaseModule(pl.LightningModule):
         return self.validation_step(batch, batch_idx)
 
 class MetricLogUtil:
-    '''
-    pl框架的callback执行顺序有bug
-    '''
     def __init__(self, logger):
-        '''
-        monitor_variable_name:  
-        monitor_variable_mode:
-        仅保留最后一个ckp和性能最好的ckp
-        '''
         self.logger = logger
         self.precision = 4
     
@@ -120,11 +109,6 @@ class MetricLogUtil:
 
 class CheckpointSaveUtil:
     def __init__(self, logger, monitor_variable_name='', monitor_variable_mode='max'):
-        '''
-        monitor_variable_name:  
-        monitor_variable_mode:
-        仅保留最后一个ckp和性能最好的ckp
-        '''
         self.logger = logger
         assert monitor_variable_mode in ['min', 'max']
         self.monitor_variable_name = monitor_variable_name
@@ -139,11 +123,6 @@ class CheckpointSaveUtil:
         # save ckp by interval
         assert self.monitor_variable_name in metric_dict
         epoch = trainer.current_epoch
-        # save_path = osp.join(trainer._default_root_dir, f'epoch_{epoch}.ckpt')
-        # save_path = osp.join(trainer._default_root_dir, f'checkpoint.ckpt')
-        # trainer.save_checkpoint(save_path, weights_only=False)
-        # self.logger.info(f'Save checkpoint of epoch {epoch} to {save_path}')
-
         # save best ckp
         if self.monitor_variable_mode == 'max':
             if metric_dict[self.monitor_variable_name] > self.monitor_variable_value:

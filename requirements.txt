@@ -1,3 +1,4 @@
+--extra-index-url https://download.pytorch.org/whl/cu121
 absl-py==2.1.0
 accelerate==0.21.0
 addict==2.4.0
@@ -16,8 +17,6 @@ bert-score==0.3.13
 bitsandbytes==0.43.3
 blinker==1.8.2
 blis==0.7.11
-# Editable install with no version control (body_visualizer==1.1.0)
--e /home/human/anaconda3/envs/llava/lib/python3.10/site-packages/body_visualizer-1.1.0-py3.10.egg
 braceexpand==0.1.7
 catalogue==2.0.10
 certifi==2024.8.30
@@ -44,7 +43,6 @@ docker-pycreds==0.4.0
 easydict==1.13
 einops==0.6.1
 einops-exts==0.0.4
--e git+https://github.com/huggingface/evaluate.git@5be95dfebca7040b911950f5ece562c2d8da142a#egg=evaluate
 exceptiongroup==1.2.2
 executing==2.1.0
 fastapi==0.114.2
@@ -191,9 +189,9 @@ timm==0.6.13
 tokenizers==0.15.1
 tomli==2.0.1
 tomlkit==0.12.0
-torch @ file:///home/human/codes/liyiheng/codes/posegpt/pkgs/torch-2.1.2%2Bcu121-cp310-cp310-linux_x86_64.whl#sha256=b2184b7729ef3b9b10065c074a37c1e603fd99f91e38376e25cb7ed6e1d54696
+torch==2.1.2
 torchmetrics==1.4.2
-torchvision @ file:///home/human/codes/liyiheng/codes/posegpt/pkgs/torchvision-0.16.2%2Bcu121-cp310-cp310-linux_x86_64.whl#sha256=baa7970c6b5437312e5dd0bd0f2571a20b786c3e285bafd6ed3e4f62a5c3c76e
+torchvision==0.16.2
 tornado==6.4.1
 tqdm==4.66.5
 traitlets==5.14.3

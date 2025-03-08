@@ -145,3 +145,4 @@ processed_dataset/*
 cache/*
 extra_libs/*
 pkgs/*
+pyrightconfig.json
