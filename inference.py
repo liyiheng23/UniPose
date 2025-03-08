@@ -3,7 +3,6 @@ import cv2
 import argparse
 import torch
 import torch.utils
-from torch.utils.data import DataLoader
 from tqdm import tqdm
 from llava import conversation as conversation_lib
 from transformers import AutoTokenizer
@@ -12,6 +11,7 @@ from peft import PeftModel
 
 from posegpt.utils import Config
 from posegpt.models.posegpt_full_mask import PoseGPTFullMask
+from posegpt.constants import POSE_TOKEN, IMAGE_TOKEN
 
 def load_pretrained_model(config, model_path, model_base, device_map='auto', torch_dtype=None, **kwargs):
     # load tokenizer
@@ -88,8 +88,31 @@ def main(args):
     print("Example 1: Generate pose of the image <image>.")
     print("Example 2: Output the difference between <pose> and <pose>.")
     print('Example 3: Output the difference between <image> and <image>.')
+
+    
     while True:
-        prompt = input('User: ')
+        prompt = input('User:')
+
+        task = dict(input=prompt)
+        poseA_rotmat_path = None
+        poseB_rotmat_path = None
+        imgA_path = None
+        imgB_path = None
+
+        if prompt.count(POSE_TOKEN) == 1:
+            poseA_rotmat_path = input('Input file path of the pose (in rotmat):')
+        if prompt.count(POSE_TOKEN) == 2:
+            poseA_rotmat_path = input('Input file path of the pose A (in rotmat):')
+            poseB_rotmat_path = input('Input file path of the pose B (in rotmat):')
+        if prompt.count(IMAGE_TOKEN) == 1:
+            imgA_path = input('Input file path of the image:')
+        if prompt.count(IMAGE_TOKEN) == 2:
+            imgA_path = input('Input file path of the image A:')
+            imgB_path = input('Input file path of the image B:')
+        
+
+
+
 
         
 
