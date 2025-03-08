@@ -1,20 +1,22 @@
 import sys
 import os
+import cv2
 import argparse
 import torch
 import torch.utils
-from posegpt.utils import Config
-from posegpt.datasets.posegpt import build_data_module
+import numpy as np
+
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from llava import conversation as conversation_lib
 from scripts.gpt_eval_full_mask import load_pretrained_model
-from posegpt.utils.vis_for_tasks import render_smpl, get_smpl_pose_params
-import cv2
-from posegpt.models.metrics import NLPEvaluator
-import numpy as np
 
-device = 'cuda:0'
+from posegpt.utils.vis_for_tasks import render_smpl, get_smpl_pose_params
+from posegpt.utils import Config
+from posegpt.datasets.posegpt import build_data_module
+
+device = 'cuda:1'
+
 def eval_model(args):
     # disable_torch_init()
     config = Config.fromfile(args.config)
@@ -33,7 +35,6 @@ def eval_model(args):
     dataset = data_module['eval_dataset']
     dataloader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=0, 
                             collate_fn=data_module['data_collator'])
-    nlp_evaluator = NLPEvaluator(metric_list=['bleu', 'rouge', 'meteor'])
     # print(f'&&&&&&&&&&&&&&&{config.evaluate_task}&&&&&&&&&&&&&&&&')
     for i, data in enumerate(tqdm(dataloader)):
         # if i < 1900: continue
