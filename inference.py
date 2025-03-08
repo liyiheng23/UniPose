@@ -5,17 +5,76 @@ import argparse
 import torch
 import torch.utils
 import numpy as np
-
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from llava import conversation as conversation_lib
-from scripts.gpt_eval_full_mask import load_pretrained_model
 
 from posegpt.utils.vis_for_tasks import render_smpl, get_smpl_pose_params
 from posegpt.utils import Config
 from posegpt.datasets.posegpt import build_data_module
 
 device = 'cuda:1'
+
+def load_pretrained_model(config, model_path, model_base, device_map='auto', torch_dtype=None, **kwargs):
+    # load tokenizer
+    assert 'checkpoint' in model_path
+    if model_path.endswith('/'): model_path = model_path[:-1]
+    tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=False)
+
+    # load model
+    print('Loading LLaVA from base model...')
+    lora_cfg_pretrained = LlavaMistralConfig.from_pretrained(model_path)
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore')
+        model = PoseGPTFullMask.from_pretrained(
+            model_base, 
+            low_cpu_mem_usage=True, 
+            attn_implementation=None, 
+            torch_dtype=torch_dtype, 
+            config=lora_cfg_pretrained, 
+            tokenizer=tokenizer, 
+            device_map=device_map, 
+            pose_vqvae_codebook_size=config.pose_vqvae_config.params.quantizer.params.nb_code, 
+            evaluate_task=config.evaluate_task)
+
+    model.config.eos_token_id = tokenizer.eos_token_id
+    model.config.bos_token_id = tokenizer.bos_token_id
+    model.config.pad_token_id = tokenizer.pad_token_id
+    model.generation_config.pad_token_id = tokenizer.pad_token_id
+    model.generation_config.eos_token_id = tokenizer.eos_token_id
+
+    token_num, tokem_dim = model.lm_head.out_features, model.lm_head.in_features
+    if model.lm_head.weight.shape[0] != token_num:
+        model.lm_head.weight = torch.nn.Parameter(torch.empty(token_num, tokem_dim, device=model.device, dtype=model.dtype))
+        model.model.embed_tokens.weight = torch.nn.Parameter(torch.empty(token_num, tokem_dim, device=model.device, dtype=model.dtype))
+    model.model.mm_projector[0].weight = torch.nn.Parameter(torch.empty(4096, 2304, device=model.device, dtype=model.dtype))
+
+    model.get_model().load_hmr_vit_backbone(**config)
+
+    print('Loading additional LLaVA weights...')
+    non_lora_trainables = torch.load(os.path.join(model_path, 'non_lora_trainables.bin'), map_location='cpu')
+    non_lora_trainables = {(k[len('base_model.model.'):] if k.startswith('base_model.model.') else k): v for k, v in non_lora_trainables.items()}
+    model.resize_token_embeddings(len(tokenizer)) # type: ignore
+    model.load_state_dict(non_lora_trainables, strict=False)
+    
+    from peft import PeftModel
+    print('Loading LoRA weights...')
+    model = PeftModel.from_pretrained(model, model_path)
+    print('Merging LoRA weights...')
+    model = model.merge_and_unload()
+    print('Model is loaded...')
+
+    # build pose vqvae model
+    model.get_model().load_pose_vqvae(**config)
+
+    vision_tower = model.get_vision_tower()
+    if not vision_tower.is_loaded:
+        raise NotImplementedError
+    image_processor = vision_tower.image_processor
+    model.get_pose_vqvae().to(model.device).to(torch_dtype)
+    model.get_hmr_vit_backbone().to(model.device).to(torch_dtype)
+    return model, image_processor
+
 
 def eval_model(args):
     # disable_torch_init()
