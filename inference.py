@@ -8,7 +8,7 @@ from llava import conversation as conversation_lib
 from transformers import AutoTokenizer
 from llava.model.language_model.llava_mistral import LlavaMistralConfig
 from peft import PeftModel
-from torch.ut
+from torchvision.transforms.transforms import Compose, Resize, CenterCrop, ToTensor, Normalize
 
 from posegpt.utils import Config
 from posegpt.models.posegpt_full_mask import PoseGPTFullMask
