@@ -8,6 +8,7 @@ from llava import conversation as conversation_lib
 from transformers import AutoTokenizer
 from llava.model.language_model.llava_mistral import LlavaMistralConfig
 from peft import PeftModel
+from torch.ut
 
 from posegpt.utils import Config
 from posegpt.models.posegpt_full_mask import PoseGPTFullMask
@@ -70,6 +71,18 @@ def load_pretrained_model(config, model_path, model_base, device_map='auto', tor
     model.get_hmr_vit_backbone().to(model.device).to(torch_dtype)
     return model, image_processor
 
+def hmr_transform(n_px=256):
+    def _convert_image_to_rgb(image):
+        return image.convert("RGB")
+    
+    return Compose([
+        Resize(n_px, interpolation=BICUBIC),
+        CenterCrop(n_px),
+        _convert_image_to_rgb,
+        ToTensor(),
+        Normalize((0.485, 0.456, 0.406), 
+                  (0.229, 0.224, 0.225)),
+    ])
 
 device = 'cuda:0'
 def main(args):
@@ -110,6 +123,7 @@ def main(args):
             imgA_path = input('Input file path of the image A:')
             imgB_path = input('Input file path of the image B:')
         
+        if imgA_path 
 
 
 
