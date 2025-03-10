@@ -9,10 +9,18 @@ from transformers import AutoTokenizer
 from llava.model.language_model.llava_mistral import LlavaMistralConfig
 from peft import PeftModel
 from torchvision.transforms.transforms import Compose, Resize, CenterCrop, ToTensor, Normalize
+from PIL import Image
+import numpy as np
 
 from posegpt.utils import Config
 from posegpt.models.posegpt_full_mask import PoseGPTFullMask
 from posegpt.constants import POSE_TOKEN, IMAGE_TOKEN
+
+try:
+    from torchvision.transforms import InterpolationMode
+    BICUBIC = InterpolationMode.BICUBIC
+except ImportError:
+    BICUBIC = Image.BICUBIC
 
 def load_pretrained_model(config, model_path, model_base, device_map='auto', torch_dtype=None, **kwargs):
     # load tokenizer
@@ -84,29 +92,29 @@ def hmr_transform(n_px=256):
                   (0.229, 0.224, 0.225)),
     ])
 
-device = 'cuda:0'
+
 def main(args):
     # disable_torch_init()
     config = Config.fromfile(args.config)
     torch_dtype = torch.bfloat16
     local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    device = f'cuda:{local_rank}'
     conversation_lib.default_conversation = conversation_lib.conv_templates['mistral_instruct']
     
     # build model, tokenizer 
     print('Load model...')
     model, image_processor = load_pretrained_model(
         config, args.model_path, args.model_base, torch_dtype=torch_dtype, device_map={"": local_rank}, **config)
+    hmr_image_processor = hmr_transform(n_px=256)
     
     print("Use '<image>' as the image placeholder, and '<pose>' as the pose placeholder. Here are some examples: ")
     print("Example 1: Generate pose of the image <image>.")
     print("Example 2: Output the difference between <pose> and <pose>.")
     print('Example 3: Output the difference between <image> and <image>.')
-
     
     while True:
         prompt = input('User:')
 
-        task = dict(input=prompt)
         poseA_rotmat_path = None
         poseB_rotmat_path = None
         imgA_path = None
@@ -123,7 +131,37 @@ def main(args):
             imgA_path = input('Input file path of the image A:')
             imgB_path = input('Input file path of the image B:')
         
-        if imgA_path 
+        if poseA_rotmat_path is not None:
+            body_poseA_rotmat = torch.from_numpy(np.load(poseA_rotmat_path))
+            body_poseB_rotmat = torch.zeros_like(body_poseA_rotmat)
+        if poseB_rotmat_path is not None:
+            body_poseB_rotmat = torch.from_numpy(np.load(poseB_rotmat_path))
+
+        if imgA_path is not None:
+            imageA = cv2.cvtColor(cv2.imread(imgA_path), cv2.COLOR_BGR2RGB)
+            imageA = image_processor.preprocess(imageA, return_tensors='pt')['pixel_values'][0]
+            hmr_imageA = hmr_image_processor(Image.open(imgA_path))
+
+            imageB = torch.zeros_like(imageA)
+            hmr_imageB = torch.zeros_like(hmr_imageA)
+
+        if imgB_path is not None:
+            imageB = cv2.cvtColor(cv2.imread(imgB_path), cv2.COLOR_BGR2RGB)
+            imageB = image_processor.preprocess(imageB, return_tensors='pt')['pixel_values'][0]
+            hmr_imageB = hmr_image_processor(Image.open(imgB_path))
+        
+        batch = dict(
+            body_poseA_rotmat=body_poseA_rotmat.to(torch.bfloat16).to(device).unsqueeze(0), 
+            body_poseB_rotmat=body_poseB_rotmat.to(torch.bfloat16).to(device).unsqueeze(0),
+            images=torch.stack([imageA, imageB], dim=0).to(torch.bfloat16).to(device).unsqueeze(0), 
+            hmr_images=torch.stack([hmr_imageA, hmr_imageB], dim=0).to(torch.bfloat16).to(device).unsqueeze(0), 
+            tasks=[{'input': prompt}], 
+            caption=['']
+        )
+        
+        with torch.no_grad():
+            output = model.evaluate(**batch)
+            import ipdb; ipdb.set_trace()
 
 
 

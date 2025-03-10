@@ -204,6 +204,7 @@ class PoseGPTFullMask(PoseGPT):
 
     def evaluate(self, body_poseA_rotmat, body_poseB_rotmat, images, caption, tasks, **kwargs):
         # pose tokenizer
+        import ipdb; ipdb.set_trace()
         keypoints_3d = kwargs.pop('keypoints_3d', None)
 
         poseA_tokens = self.model.pose_vqvae.encode(body_poseA_rotmat)
