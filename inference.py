@@ -1,6 +1,7 @@
 import os
 import cv2
 import argparse
+import warnings
 import torch
 import torch.utils
 from tqdm import tqdm
@@ -31,16 +32,18 @@ def load_pretrained_model(config, model_path, model_base, device_map='auto', tor
     # load model
     print('Loading LLaVA from base model...')
     lora_cfg_pretrained = LlavaMistralConfig.from_pretrained(model_path)
-    model = PoseGPTFullMask.from_pretrained(
-        model_base, 
-        low_cpu_mem_usage=True, 
-        attn_implementation=None, 
-        torch_dtype=torch_dtype, 
-        config=lora_cfg_pretrained, 
-        tokenizer=tokenizer, 
-        device_map=device_map, 
-        pose_vqvae_codebook_size=config.pose_vqvae_config.params.quantizer.params.nb_code, 
-        evaluate_task=config.evaluate_task)
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore')
+        model = PoseGPTFullMask.from_pretrained(
+            model_base, 
+            low_cpu_mem_usage=True, 
+            attn_implementation=None, 
+            torch_dtype=torch_dtype, 
+            config=lora_cfg_pretrained, 
+            tokenizer=tokenizer, 
+            device_map=device_map, 
+            pose_vqvae_codebook_size=config.pose_vqvae_config.params.quantizer.params.nb_code, 
+            evaluate_task=config.evaluate_task)
 
     model.config.eos_token_id = tokenizer.eos_token_id
     model.config.bos_token_id = tokenizer.bos_token_id
@@ -131,19 +134,21 @@ def main(args):
             imgA_path = input('Input file path of the image A:')
             imgB_path = input('Input file path of the image B:')
         
+        body_poseA_rotmat = torch.zeros((22, 3, 3))
+        body_poseB_rotmat = torch.zeros((22, 3, 3))
         if poseA_rotmat_path is not None:
             body_poseA_rotmat = torch.from_numpy(np.load(poseA_rotmat_path))
-            body_poseB_rotmat = torch.zeros_like(body_poseA_rotmat)
         if poseB_rotmat_path is not None:
             body_poseB_rotmat = torch.from_numpy(np.load(poseB_rotmat_path))
-
+        
+        imageA = torch.zeros((3, 336, 336))
+        imageB = torch.zeros((3, 336, 336))
+        hmr_imageA = torch.zeros((3, 256, 256))
+        hmr_imageB = torch.zeros((3, 256, 256))
         if imgA_path is not None:
             imageA = cv2.cvtColor(cv2.imread(imgA_path), cv2.COLOR_BGR2RGB)
             imageA = image_processor.preprocess(imageA, return_tensors='pt')['pixel_values'][0]
             hmr_imageA = hmr_image_processor(Image.open(imgA_path))
-
-            imageB = torch.zeros_like(imageA)
-            hmr_imageB = torch.zeros_like(hmr_imageA)
 
         if imgB_path is not None:
             imageB = cv2.cvtColor(cv2.imread(imgB_path), cv2.COLOR_BGR2RGB)
@@ -161,7 +166,6 @@ def main(args):
         
         with torch.no_grad():
             output = model.evaluate(**batch)
-            import ipdb; ipdb.set_trace()
 
 
 

@@ -38,7 +38,7 @@ class PoseGPT(LlavaMistralForCausalLM):
         self.pose_vqvae_codebook_size = pose_vqvae_codebook_size
         self.pose_begin_idx = self.tokenizer(f'<pose_id_{self.pose_vqvae_codebook_size}>').input_ids[1] # type: ignore
         self.pose_end_idx = self.tokenizer(f'<pose_id_{self.pose_vqvae_codebook_size + 1}>').input_ids[1] # type: ignore
-        if 'evaluate_task' is not None:
+        if evaluate_task is not None:
             self.evaluate_task = evaluate_task
 
     def get_mm_projector(self):

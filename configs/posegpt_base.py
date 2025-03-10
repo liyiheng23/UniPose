@@ -31,12 +31,12 @@ pose_vqvae_config=dict(
                 mu=0.99)), 
     )
 )
-pose_vqvae_ckp_path='processed_dataset/saved_checkpoints/pose_vqvae_noise_root_orient/best_MPJPE.ckpt'
+pose_vqvae_ckp_path='cache/saved_checkpoints/pose_vqvae_noise_root_orient/best_MPJPE.ckpt'
 
 # ====================================================
 # hmr vit 
 # ====================================================
-hmr_vit_ckp_path = 'processed_dataset/tokenhmr_model.ckpt'
+hmr_vit_ckp_path = 'cache/tokenhmr_model.ckpt'
 
 # ====================================================
 # Metric
@@ -86,8 +86,8 @@ poseAB_text_encoder_config=dict(
     ), 
 )
 
-pose_text_encoder_ckp_path = 'processed_dataset/saved_checkpoints/retrieval_text_pose_vqpose_finetune_trainval/best_mRecall.ckpt'
-poseAB_text_encoder_ckp_path = 'processed_dataset/saved_checkpoints/retrieval_text_poseAB_vqpose_finetune_trainval/best_mRecall.ckpt'
+pose_text_encoder_ckp_path = 'cache/saved_checkpoints/retrieval_text_pose_vqpose_finetune_trainval/best_mRecall.ckpt'
+poseAB_text_encoder_ckp_path = 'cache/saved_checkpoints/retrieval_text_poseAB_vqpose_finetune_trainval/best_mRecall.ckpt'
 
 metrics = dict(
     text2pose=dict(

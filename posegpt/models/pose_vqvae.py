@@ -19,7 +19,7 @@ class PoseVQVAE(BaseModule):
         self.decoder = build_model(decoder)
         self.quantizer = build_model(quantizer)
 
-        self.body_model = BodyModel('processed_dataset/smpl_models/smplh/SMPLH_NEUTRAL.npz')
+        self.body_model = BodyModel('cache/smpl_models/smplh/SMPLH_NEUTRAL.npz')
         self.codebook_size = self.quantizer.nb_code
         self.token_num = int(self.decoder.token_num)
     

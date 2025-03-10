@@ -7,20 +7,6 @@ instruction_finetune = True
 # instruction_finetune = False
 data=dict(
     eval=dict(
-        image2pose_reasoning_dataset=dict(
-            split='train',
-            dataset_root='processed_dataset/image_dataset', 
-            ann_file='processed_dataset/image_dataset/reasoning-test.pkl', 
-            # task_name='image2pose_reasoning', 
-            instruction_finetune=True, 
-        ), 
-        image2text_reasoning_dataset=dict(
-            split='train',
-            dataset_root='processed_dataset/image_dataset', 
-            ann_file='processed_dataset/image_dataset/reasoning-test.pkl', 
-            # task_name='image2text_reasoning', 
-            instruction_finetune=True, 
-        ), 
         image2pose_dataset=dict(
             split='test',
             dataset_root='processed_dataset/image_dataset', 
