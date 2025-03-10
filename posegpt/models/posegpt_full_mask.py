@@ -203,17 +203,11 @@ class PoseGPTFullMask(PoseGPT):
         )
 
     def evaluate(self, body_poseA_rotmat, body_poseB_rotmat, images, caption, tasks, **kwargs):
-        # pose tokenizer
-        import ipdb; ipdb.set_trace()
-        keypoints_3d = kwargs.pop('keypoints_3d', None)
-
         poseA_tokens = self.model.pose_vqvae.encode(body_poseA_rotmat)
         poseB_tokens = self.model.pose_vqvae.encode(body_poseB_rotmat)
         input_ids, attention_mask = process_templates(
             caption, tasks, poseA_tokens, poseB_tokens, tokenizer=self.tokenizer, 
             codebook_size=self.pose_vqvae_codebook_size)
-        
-        # generate
         self.config.tokenizer_padding_side = 'left'
         input_ids = input_ids.to(self.device, non_blocking=True)
         attention_mask = attention_mask.to(self.device, non_blocking=True)
@@ -221,43 +215,17 @@ class PoseGPTFullMask(PoseGPT):
         outputs = self.generate(
             input_ids, attention_mask=attention_mask, images=images, max_new_tokens=512, 
             num_beams=1, use_cache=True, tasks=tasks, **kwargs)
-        # convert output to float32 for metric calculation.
-        # pose process
-        
-        if self.evaluate_task in ['pose2text', 'image2text', 'image2text_reasoning']:
-            pred_text = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
-            return dict(
-                gt_pose=body_poseA_rotmat.to(torch.float32), 
-                pred_text=pred_text, 
-                gt_text=caption)
-        elif self.evaluate_task in ['text2pose']:
-            pred_body_pose_rotmat = self.decode_pose_from_outputs(outputs, self.device, input_ids.dtype)
-            return dict(
-                pred_pose=pred_body_pose_rotmat.to(torch.float32), 
-                gt_pose=body_poseA_rotmat.to(torch.float32), 
-                gt_text=caption)
-        elif self.evaluate_task in ['pose_edit']:
-            pred_body_pose_rotmat = self.decode_pose_from_outputs(outputs, self.device, input_ids.dtype)
-            return dict(
-                pred_pose=pred_body_pose_rotmat.to(torch.float32), 
-                gt_pose=body_poseB_rotmat.to(torch.float32), 
-                gt_text=caption)
-        elif self.evaluate_task in ['image2pose']:
+
+        pred_body_pose = None
+        pred_text = None
+        if torch.where(outputs == self.pose_begin_idx)[0].shape[0] > 0:
             pred_body_pose = self.decode_pose_from_outputs(
                 outputs, self.device, input_ids.dtype, return_pose_type='axis_angle')
-            return dict(
-                pred_axis_angles=pred_body_pose, 
-                keypoints_3d=keypoints_3d)
-        elif self.evaluate_task in ['pose_difference', 'image_difference']:
-            pred_text = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
-            gt_pose = torch.stack([body_poseA_rotmat.to(torch.float32), 
-                                   body_poseB_rotmat.to(torch.float32)], dim=0)
-            return dict(
-                gt_pose=gt_pose, 
-                pred_text=pred_text, 
-                gt_text=caption)
         else:
-            raise NotImplementedError
+            pred_text = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
+        return dict(
+            body_pose=pred_body_pose, 
+            text=pred_text)
 
     def prepare_inputs_labels_for_multimodal(self, input_ids, position_ids, attention_mask, past_key_values, labels, images, hmr_images=None, tasks=None):
         vision_tower = self.get_vision_tower()

@@ -95,7 +95,6 @@ def hmr_transform(n_px=256):
                   (0.229, 0.224, 0.225)),
     ])
 
-
 def main(args):
     # disable_torch_init()
     config = Config.fromfile(args.config)
@@ -116,7 +115,7 @@ def main(args):
     print('Example 3: Output the difference between <image> and <image>.')
     
     while True:
-        prompt = input('User:')
+        prompt = input('=> User: ')
 
         poseA_rotmat_path = None
         poseB_rotmat_path = None
@@ -124,15 +123,15 @@ def main(args):
         imgB_path = None
 
         if prompt.count(POSE_TOKEN) == 1:
-            poseA_rotmat_path = input('Input file path of the pose (in rotmat):')
+            poseA_rotmat_path = input('==>Input file path of the pose (in rotmat): ')
         if prompt.count(POSE_TOKEN) == 2:
-            poseA_rotmat_path = input('Input file path of the pose A (in rotmat):')
-            poseB_rotmat_path = input('Input file path of the pose B (in rotmat):')
+            poseA_rotmat_path = input('==>Input file path of the pose A (in rotmat): ')
+            poseB_rotmat_path = input('==>Input file path of the pose B (in rotmat): ')
         if prompt.count(IMAGE_TOKEN) == 1:
-            imgA_path = input('Input file path of the image:')
+            imgA_path = input('==>Input file path of the image: ')
         if prompt.count(IMAGE_TOKEN) == 2:
-            imgA_path = input('Input file path of the image A:')
-            imgB_path = input('Input file path of the image B:')
+            imgA_path = input('==>Input file path of the image A: ')
+            imgB_path = input('==>Input file path of the image B: ')
         
         body_poseA_rotmat = torch.zeros((22, 3, 3))
         body_poseB_rotmat = torch.zeros((22, 3, 3))
@@ -158,8 +157,8 @@ def main(args):
         batch = dict(
             body_poseA_rotmat=body_poseA_rotmat.to(torch.bfloat16).to(device).unsqueeze(0), 
             body_poseB_rotmat=body_poseB_rotmat.to(torch.bfloat16).to(device).unsqueeze(0),
-            images=torch.stack([imageA, imageB], dim=0).to(torch.bfloat16).to(device).unsqueeze(0), 
-            hmr_images=torch.stack([hmr_imageA, hmr_imageB], dim=0).to(torch.bfloat16).to(device).unsqueeze(0), 
+            images=torch.stack([imageA, imageB], dim=0).to(torch.bfloat16).to(device), 
+            hmr_images=torch.stack([hmr_imageA, hmr_imageB], dim=0).to(torch.bfloat16).to(device), 
             tasks=[{'input': prompt}], 
             caption=['']
         )
@@ -167,7 +166,13 @@ def main(args):
         with torch.no_grad():
             output = model.evaluate(**batch)
 
-
+        import ipdb; ipdb.set_trace()
+        body_pose = output['body_pose']
+        text = output['text']
+        if text is not None:
+            print(f'=> GPT: {text}')
+        if body_pose is not None:
+            
 
 
         

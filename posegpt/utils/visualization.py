@@ -18,7 +18,7 @@ from PIL import Image
 from posegpt.utils import BodyModel
 import cv2
 from posegpt.utils.rotation_conversions import matrix_to_axis_angle, rotvec_to_eulerangles, eulerangles_to_rotvec, axis_angle_to_matrix
-body_model = BodyModel('processed_dataset/smpl_models/smplh/SMPLH_NEUTRAL.npz')
+body_model = BodyModel('cache/smpl_models/smplh/SMPLH_NEUTRAL.npz')
 
 ### VISUALIZATION PARAMETERS
 ################################################################################
