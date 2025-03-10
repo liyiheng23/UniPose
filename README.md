@@ -49,7 +49,7 @@ This repository contains the official implementation of **UniPose**. UniPose is 
       #### Base Model:
       * `CLIP-ViT`: [openai/clip-vit-large-patch14-336](https://huggingface.co/openai/clip-vit-large-patch14-336)
       * `LLaVA`: [liuhaotian/llava-v1.6-mistral-7b](https://huggingface.co/liuhaotian/llava-v1.6-mistral-7b)
-      * `smpl_models`: [smplx](https://smpl-x.is.tue.mpg.de)
+      * `smpl_models`: [smplh](https://mano.is.tue.mpg.de)
       #### Ours provided Model:
       * `unipose`: [L-yiheng/UniPose](https://huggingface.co/L-yiheng/UniPose)
       * `tokenhmr_model`: [tokenhmr_model](https://drive.google.com/file/d/1RZfB3oD2LitzQTKhc7dDX4IB0bY8yCEt/view?usp=share_link)
@@ -64,10 +64,10 @@ This repository contains the official implementation of **UniPose**. UniPose is 
     ├── pose_vqvae
     │   └── best_MPJPE.ckpt
     ├── smpl_models
-    │   └── smplx
-    │       ├── SMPLX_FEMALE.npz
-    │       ├── SMPLX_MALE.npz
-    │       └── SMPLX_NEUTRAL.npz
+    │   └── smplh
+    │       ├── SMPLH_FEMALE.npz
+    │       ├── SMPLH_MALE.npz
+    │       └── SMPLH_NEUTRAL.npz
     ├── tokenhmr_model.ckpt
     └── unipose
     ```

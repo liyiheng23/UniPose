@@ -1,6 +1,5 @@
 import pytorch_lightning as pl
 from posegpt.utils.config.config import instantiate_from_config, get_obj_from_str
-from collections import defaultdict
 import os.path as osp
 from pytorch_lightning.utilities.rank_zero import rank_zero_only
 import torch
