@@ -203,7 +203,7 @@ class TokenHMRDecoder(nn.Module):
         decoder_layers.append(nn.Conv1d(input_dim, hidden_dim, 3, 1, 1))
         decoder_layers.append(nn.ReLU())
 
-        print(f'Num of tokens --> {num_tokens}')
+        # print(f'Num of tokens --> {num_tokens}')
         for i in list(np.linspace(num_joints, num_tokens, 4, endpoint=False, dtype=int)[::-1]):
             decoder_layers.append(nn.Upsample(i))
             decoder_layers.append(nn.Conv1d(hidden_dim, hidden_dim, 3, 1, 1))

@@ -45,35 +45,42 @@ This repository contains the official implementation of **UniPose**. UniPose is 
    conda activate unipose
    pip3 install -r requirements.txt
    ```
-3. Download Pre-trained Models
+3. Download Pre-trained Models and put these models under `./cache` folder. 
       #### Base Model:
       * `CLIP-ViT`: [openai/clip-vit-large-patch14-336](https://huggingface.co/openai/clip-vit-large-patch14-336)
       * `LLaVA`: [liuhaotian/llava-v1.6-mistral-7b](https://huggingface.co/liuhaotian/llava-v1.6-mistral-7b)
+      * `smpl_models`: [smplx](https://smpl-x.is.tue.mpg.de)
       #### Ours provided Model:
+      * `unipose`: [L-yiheng/UniPose](https://huggingface.co/L-yiheng/UniPose)
+      * `tokenhmr_model`: [tokenhmr_model](https://drive.google.com/file/d/1RZfB3oD2LitzQTKhc7dDX4IB0bY8yCEt/view?usp=share_link)
+      * `pose-vqvae`: [pose-vqvae](https://drive.google.com/drive/folders/1YSPZNjkIrFnSFnRDbyYh1JeW5G9fjDfw?usp=share_link)
+    
+    Now under `./cache`, you should be able to see the following: 
+
+    ```shell
+    cache
+    ├── clip-vit-large-patch14-336
+    ├── llava-v1.6-mistral-7b
+    ├── pose_vqvae
+    │   └── best_MPJPE.ckpt
+    ├── smpl_models
+    │   └── smplx
+    │       ├── SMPLX_FEMALE.npz
+    │       ├── SMPLX_MALE.npz
+    │       └── SMPLX_NEUTRAL.npz
+    ├── tokenhmr_model.ckpt
+    └── unipose
+    ```
+
 
 ## ⚡ Inference
-We provide the `RealLQ250` benchmark, which can be downloaded from [Google Drive](https://drive.google.com/file/d/16uWuJOyGMw5fbXHGcl6GOmxYJb_Szrqe/view?usp=sharing).
-#### Testing DreamClear for Image Restoration
 
-
-Run the following command to restore LQ images (the code defaults to using 2 GPUs for inference):
 ```shell
-python3 -m torch.distributed.launch --nproc_per_node 1 --master_port 1234 \
-    test.py configs/DreamClear/DreamClear_Test.py \
-    --dreamclear_ckpt /path/to/DreamClear-1024.pth \
-    --swinir_ckpt /path/to/general_swinir_v1.ckpt \
-    --vae_ckpt /path/to/sd-vae-ft-ema \
-    --t5_ckpt /path/to/t5-v1_1-xxl \
-    --llava_ckpt /path/to/llava-v1.6-vicuna-13b \
-    --lre --cfg_scale 4.5 --color_align wavelet \
-    --image_path /path/to/input/images \
-    --save_dir validation \
-    --mixed_precision fp16 \
-    --upscale 4
+python inference.py \
+    --model-path cache/unipose \
+    --model-base cache/llava-v1.6-mistral-7b \
+    --config configs/inference.py
 ```
-#### Evaluation on high-level benchmarks
-
-Testing instructions for [segmentation](segmentation/README.md) and [detection](detection/README.md) can be found in their respective folders.
 
 ## 🪪 License
 

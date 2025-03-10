@@ -2,6 +2,7 @@ import os
 import cv2
 import argparse
 import warnings
+import trimesh
 import torch
 import torch.utils
 from tqdm import tqdm
@@ -14,8 +15,10 @@ from PIL import Image
 import numpy as np
 
 from posegpt.utils import Config
+from posegpt.utils import BodyModel
 from posegpt.models.posegpt_full_mask import PoseGPTFullMask
 from posegpt.constants import POSE_TOKEN, IMAGE_TOKEN
+from posegpt.utils.rotation_conversions import axis_angle_to_matrix
 
 try:
     from torchvision.transforms import InterpolationMode
@@ -25,12 +28,11 @@ except ImportError:
 
 def load_pretrained_model(config, model_path, model_base, device_map='auto', torch_dtype=None, **kwargs):
     # load tokenizer
-    assert 'checkpoint' in model_path
     if model_path.endswith('/'): model_path = model_path[:-1]
     tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=False)
 
     # load model
-    print('Loading LLaVA from base model...')
+    # print('Loading LLaVA from base model...')
     lora_cfg_pretrained = LlavaMistralConfig.from_pretrained(model_path)
     with warnings.catch_warnings():
         warnings.filterwarnings('ignore')
@@ -43,7 +45,7 @@ def load_pretrained_model(config, model_path, model_base, device_map='auto', tor
             tokenizer=tokenizer, 
             device_map=device_map, 
             pose_vqvae_codebook_size=config.pose_vqvae_config.params.quantizer.params.nb_code, 
-            evaluate_task=config.evaluate_task)
+            evaluate_task=None)
 
     model.config.eos_token_id = tokenizer.eos_token_id
     model.config.bos_token_id = tokenizer.bos_token_id
@@ -59,17 +61,17 @@ def load_pretrained_model(config, model_path, model_base, device_map='auto', tor
 
     model.get_model().load_hmr_vit_backbone(**config)
 
-    print('Loading additional LLaVA weights...')
+    # print('Loading additional LLaVA weights...')
     non_lora_trainables = torch.load(os.path.join(model_path, 'non_lora_trainables.bin'), map_location='cpu')
     non_lora_trainables = {(k[len('base_model.model.'):] if k.startswith('base_model.model.') else k): v for k, v in non_lora_trainables.items()}
     model.resize_token_embeddings(len(tokenizer)) # type: ignore
     model.load_state_dict(non_lora_trainables, strict=False)
     
-    print('Loading LoRA weights...')
+    # print('Loading LoRA weights...')
     model = PeftModel.from_pretrained(model, model_path)
-    print('Merging LoRA weights...')
+    # print('Merging LoRA weights...')
     model = model.merge_and_unload()
-    print('Model is loaded...')
+    # print('Model is loaded...')
 
     # build pose vqvae model
     model.get_model().load_pose_vqvae(**config)
@@ -94,6 +96,18 @@ def hmr_transform(n_px=256):
         Normalize((0.485, 0.456, 0.406), 
                   (0.229, 0.224, 0.225)),
     ])
+
+def vis_mesh(pose=None, pose_body=None, global_orient=None, save_path='smpl_mesh.obj'):
+    if pose is not None:
+        pose = torch.tensor(pose).to(torch.float64)
+        pose_body = pose[None, 3:66]
+        root_orient = pose[None, :3]
+    else:
+        pose_body = pose_body
+        root_orient = global_orient
+    smpl = BodyModel('cache/smpl_models/smplx/SMPLX_NEUTRAL.npz', dtype=torch.float64)
+    p1 = smpl.forward(pose_body=pose_body, root_orient=root_orient)
+    trimesh.Trimesh(vertices=p1.v.detach().numpy()[0], faces=smpl.f).export(save_path)
 
 def main(args):
     # disable_torch_init()
@@ -166,108 +180,25 @@ def main(args):
         with torch.no_grad():
             output = model.evaluate(**batch)
 
-        import ipdb; ipdb.set_trace()
         body_pose = output['body_pose']
         text = output['text']
         if text is not None:
-            print(f'=> GPT: {text}')
+            print(f'=> GPT: {text[0]}')
         if body_pose is not None:
+            body_pose = body_pose.to(torch.float32).cpu().squeeze(0).numpy()
+            np.save('smpl_mesh_rotmat.npy', axis_angle_to_matrix(torch.from_numpy(body_pose).view(-1, 3)))
+            vis_mesh(body_pose)
             
-
-
-        
-
-    print(f'&&&&&&&&&&&&&&&{config.evaluate_task}&&&&&&&&&&&&&&&&')
-    for i, data in enumerate(tqdm(dataloader)):
-        # if i < 1900: continue
-        # move data to cuda
-        data = {k: v.to(device, dtype=torch_dtype) if isinstance(v, torch.Tensor) else v for k, v in data.items()}
-        import ipdb; ipdb.set_trace()
-        imgA_path = data.pop('imgA_path', None)
-        imgB_path = data.pop('imgB_path', None)
-        if '3dpw' in imgB_path[0] or 'h36m' in imgB_path[0]:
-            continue
-        # forward
-        with torch.no_grad(): output = model.evaluate(**data)
-
-        # output result
-        print(data['tasks'][0])
-        print(data['caption'])
-        if config.evaluate_task == 'pose2text':
-            print(output['pred_text'])
-            gt_pose_params = get_smpl_pose_params(output['gt_pose'], type='rotmat')
-            render_smpl(gt_pose_params, save_path='gt_smpl.png')
-        elif config.evaluate_task == 'text2pose':
-            # forward
-            with torch.no_grad(): output = model.evaluate(**data)
-            # output result
-            render_smpl(get_smpl_pose_params(output['gt_pose'], type='rotmat'), save_path='gt_smpl.png')
-            render_smpl(get_smpl_pose_params(output['pred_pose'], type='rotmat'), save_path='pred_smpl.png', viewpoints=[[20, (0, 1, 0)]])
-        elif config.evaluate_task == 'pose_difference':
-            gt_pose_A, gt_pose_B = output['gt_pose']
-            render_smpl(get_smpl_pose_params(gt_pose_A, type='rotmat'), save_path='gt_smpl_a.png', viewpoints=[[20, (0, 1, 0)]])
-            render_smpl(get_smpl_pose_params(gt_pose_B, type='rotmat'), save_path='gt_smpl_b.png', viewpoints=[[20, (0, 1, 0)]])
-            print(output['pred_text'])
-        elif config.evaluate_task == 'pose_edit':            
-            render_smpl(get_smpl_pose_params(data['body_poseA_rotmat'], type='rotmat'), save_path='gt_smpl_a.png', viewpoints=[[20, (0, 1, 0)]])
-            # import ipdb; ipdb.set_trace()
-            # data['caption'][0] = 'Put down your left leg and stretch it as straight as possible. Extend your right arm forward and your left arm backward'
-            # with torch.no_grad(): output = model.evaluate(**data)
-            render_smpl(get_smpl_pose_params(output['gt_pose'], type='rotmat'), save_path='gt_smpl_b.png', viewpoints=[[20, (0, 1, 0)]])
-            render_smpl(get_smpl_pose_params(output['pred_pose'], type='rotmat'), save_path='pred_smpl_b.png', viewpoints=[[20, (0, 1, 0)]])
-        elif config.evaluate_task == 'image2pose':
-            # 右手向后伸，与身体呈45度，
-            # change posegpt/utils/vis_for_tasks.py # 125 line
-            # data['tasks'][0]['input'] = 'The right elbow is straight. Extend your right hand as far back as possible. The right arm is located behind the body.  The left knee partially bent while the left forearm is aligned horizontally. Can you examine the image <image> and identify the SMPL pose parameters of the individual?'
-            # with torch.no_grad(): output = model.evaluate(**data) 
-            vis_mesh(output['pred_axis_angles'][0].float().cpu())
-            import ipdb; ipdb.set_trace()
-
-            # cv2.imwrite('gt_img.png', cv2.imread(imgA_path[0]))
-            render_smpl(get_smpl_pose_params(data['body_poseA_rotmat'], type='rotmat', normalize_root_orient=False), save_path='gt_smpl.png', viewpoints=[[-45, (0, 1, 0)]])
-
-            render_smpl(get_smpl_pose_params(output['pred_axis_angles'].reshape(1, -1, 3), type='axis_angle', normalize_root_orient=False), save_path='pred_smpl.png', viewpoints=[[-45, (0, 1, 0)]])
-        elif config.evaluate_task == 'image2text':
-            # change posegpt/utils/vis_for_tasks.py # 125 line
-            # i == 1905
-            cv2.imwrite('gt_img.png', cv2.imread(imgA_path[0]))
-            render_smpl(get_smpl_pose_params(data['body_poseA_rotmat'], type='rotmat', normalize_root_orient=False), 
-                        save_path='gt_smpl.png', viewpoints=[[-45, (0, 1, 0)]])
-            print(output['pred_text'])
-            metric = nlp_evaluator(predictions=output['pred_text'], references=output['gt_text'])
-            print(f"bleu: {metric['bleu']['bleu']}, rouge: {metric['rouge']['rougeL']}, meteor: {metric['meteor']['meteor']}")
-        elif config.evaluate_task == 'image_difference':
-            # imgA_path = 'processed_dataset/image_dataset/3dpw/imageFiles_outdoors_fencing_01_image_00917.png'
-            # imgB_path = 'processed_dataset/image_dataset/3dpw/imageFiles_outdoors_fencing_01_image_00648.png'
-
-            # imageA = cv2.cvtColor(cv2.imread(imgA_path), cv2.COLOR_BGR2RGB)
-            # imageB = cv2.cvtColor(cv2.imread(imgB_path), cv2.COLOR_BGR2RGB)
-            # imageA = dataloader.dataset.datasets[2].image_processor.preprocess(imageA, return_tensors='pt')['pixel_values'][0]
-            # imageB = dataloader.dataset.datasets[2].image_processor.preprocess(imageB, return_tensors='pt')['pixel_values'][0]
-            # data['images'] = torch.stack([imageA, imageB]).cuda().bfloat16()
-            cv2.imwrite('gt_img_a.png', cv2.imread(imgA_path[0]))
-            cv2.imwrite('gt_img_b.png', cv2.imread(imgB_path[0]))
-            gt_pose_A, gt_pose_B = output['gt_pose']
-            render_smpl(get_smpl_pose_params(gt_pose_A, type='rotmat', normalize_root_orient=False), 
-                        save_path='gt_smpl_a.png', viewpoints=[[-45, (0, 1, 0)]])
-            render_smpl(get_smpl_pose_params(gt_pose_B, type='rotmat', normalize_root_orient=False), 
-                        save_path='gt_smpl_b.png', viewpoints=[[-45, (0, 1, 0)]])
-            metric = nlp_evaluator(predictions=output['pred_text'], references=output['gt_text'])
-            print(f"bleu: {metric['bleu']['bleu']}, rouge: {metric['rouge']['rougeL']}, meteor: {metric['meteor']['meteor']}")
-            print(output['pred_text'])
-        else:
-            continue
-        # if metric['bleu']['bleu'] > 0.15:
-        import ipdb; ipdb.set_trace()
+            print("SMPL mesh saved as smpl_mesh.obj")
+            print("SMPL parameters saved as smpl_mesh_rotmat.npy")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--model-path", type=str, default='checkpoints/stage-finetune-full-mask-instructions-fix-hmr-bug-epoch-6/checkpoint-7260')
+    parser.add_argument("--model-path", type=str, default='cache/unipose')
     parser.add_argument("--model-base", type=str, default='cache/llava-v1.6-mistral-7b')
-    parser.add_argument("--config", type=str, default='configs/vis.py')
-    parser.add_argument('--bf16', default=True)
+    parser.add_argument("--config", type=str, default='configs/inference.py')
     args = parser.parse_args()
 
     main(args)
