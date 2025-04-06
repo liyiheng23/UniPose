@@ -8,7 +8,7 @@
 
 <div>
     <h4 align="center">
-        <a href="https://www.arxiv.org/abs/2411.16781" target='_blank'>
+        <a href="https://arxiv.org/abs/2411.16781v2" target='_blank'>
             <img src="https://img.shields.io/badge/arxiv-report-red">
         </a>
         <a href="https://liyiheng23.github.io/UniPose-Page/" target='_blank'>
