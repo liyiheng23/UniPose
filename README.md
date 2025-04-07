@@ -3,7 +3,7 @@
 <h1>UniPose: A Unified Multimodal Framework for Human Pose Comprehension, Generation and Editing</h1>
 
 <div>
-    <strong>CVPR 2025</strong>
+    <strong>CVPR 2025 Highlight</strong>
 </div>
 
 <div>
